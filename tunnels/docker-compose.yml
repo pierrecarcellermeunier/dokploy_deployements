@@ -1,0 +1,73 @@
+services:
+  frps:
+    image: ghcr.io/fatedier/frps:v0.71.0
+    restart: unless-stopped
+    command: ["-c", "/etc/frp/frps.toml"]
+    ports:
+      - "7000:7000"
+    environment:
+      TUNNEL_DOMAIN: ${TUNNEL_DOMAIN:?TUNNEL_DOMAIN doit être défini}
+    configs:
+      - source: frps_config
+        target: /etc/frp/frps.toml
+    secrets:
+      - source: frp_token
+        target: frp_token
+    networks:
+      - internal
+
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      TUNNEL_DOMAIN: ${TUNNEL_DOMAIN:?TUNNEL_DOMAIN doit être défini}
+      OVH_ENDPOINT: ${OVH_ENDPOINT:-ovh-eu}
+      OVH_APPLICATION_KEY: ${OVH_APPLICATION_KEY:?OVH_APPLICATION_KEY doit être défini}
+      OVH_APPLICATION_SECRET: ${OVH_APPLICATION_SECRET:?OVH_APPLICATION_SECRET doit être défini}
+      OVH_CONSUMER_KEY: ${OVH_CONSUMER_KEY:?OVH_CONSUMER_KEY doit être défini}
+    expose:
+      - "443"
+    volumes:
+      - caddy_data:/data
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    networks:
+      - internal
+      - dokploy-network
+    depends_on:
+      - frps
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - 'traefik.tcp.routers.tunnels.rule=HostSNIRegexp(`^.+\.tunnel\.${TUNNEL_DOMAIN}$`)'
+      - "traefik.tcp.routers.tunnels.entrypoints=websecure"
+      - "traefik.tcp.routers.tunnels.tls=true"
+      - "traefik.tcp.routers.tunnels.tls.passthrough=true"
+      - "traefik.tcp.routers.tunnels.service=tunnels-caddy"
+      - "traefik.tcp.services.tunnels-caddy.loadbalancer.server.port=443"
+
+volumes:
+  caddy_data:
+
+configs:
+  caddyfile:
+    file: ./Caddyfile
+  frps_config:
+    file: ./frps.toml
+
+secrets:
+  frp_token:
+    environment: FRP_TOKEN
+
+networks:
+  # Réseau privé du projet. Il reste un bridge normal pour que Docker publie
+  # correctement le port 7000 de frps sur l'hôte.
+  internal:
+    # Nom explicite pour éviter que Dokploy réutilise l'ancien réseau interne
+    # créé avec `internal: true`.
+    name: dokploy-tunnels-internal
+  dokploy-network:
+    external: true

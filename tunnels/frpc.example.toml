@@ -1,0 +1,16 @@
+# Copiez ce fichier en frpc.toml et adaptez au besoin.
+# Lancez frpc avec FRP_TOKEN défini dans l'environnement.
+
+serverAddr = "tunnel.example.com"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+transport.tls.enable = true
+
+[[proxies]]
+name = "web"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 3000
+subdomain = "prenom"
